@@ -82,24 +82,10 @@ def parse_json_data(json_str):
                               print("Returning data blob found at actual_data[6].")
                               return potential_data_blob # This is the main data structure
                           else:
-                              print(f"Data at actual_data[6] is not a list, but {type(potential_data_blob)}. Saving inner data for inspection.")
-                              # Save actual_data for debugging
-                              try:
-                                  with open("debug_inner_data.json", "w", encoding="utf-8") as f_inner:
-                                      json.dump(actual_data, f_inner, indent=2)
-                                  print("...Successfully saved debug_inner_data.json")
-                              except Exception as dump_error_inner:
-                                  print(f"Error saving inner debug file: {dump_error_inner}")
+                              print(f"Data at actual_data[6] is not a list, but {type(potential_data_blob)}.")
                               return None # Structure mismatch within inner data
                      else:
-                         print(f"Parsed inner JSON is not a list or too short (len <= 6), type: {type(actual_data)}. Saving inner data for inspection.")
-                         # Save actual_data for debugging
-                         try:
-                             with open("debug_inner_data.json", "w", encoding="utf-8") as f_inner:
-                                 json.dump(actual_data, f_inner, indent=2)
-                             print("...Successfully saved debug_inner_data.json")
-                         except Exception as dump_error_inner:
-                             print(f"Error saving inner debug file: {dump_error_inner}")
+                         print(f"Parsed inner JSON is not a list or too short (len <= 6), type: {type(actual_data)}.")
                          return None # Inner JSON structure not as expected
 
                  except json.JSONDecodeError as e_inner:
@@ -112,27 +98,11 @@ def parse_json_data(json_str):
              # Case 3: Data at [3][6] is neither a list nor the expected string
              else:
                  print(f"Parsed JSON structure unexpected at [3][6]. Expected list or prefixed JSON string, got {type(data_blob_or_str)}.")
-                 # Save initial_data for debugging
-                 print("Attempting to save full structure to debug_initial_data.json...")
-                 try:
-                     with open("debug_initial_data.json", "w", encoding="utf-8") as f:
-                         json.dump(initial_data, f, indent=2)
-                     print("...Successfully saved debug_initial_data.json")
-                 except Exception as dump_error:
-                     print(f"Error saving debug file: {dump_error}")
                  return None # Unexpected structure at [3][6]
 
         # Case 4: Initial path [3][6] itself wasn't valid
         else:
             print(f"Initial JSON structure not as expected (list[3][6] path not valid). Type: {type(initial_data)}")
-            # Save initial_data for debugging
-            print("Attempting to save unexpected structure to debug_initial_data.json...")
-            try:
-                with open("debug_initial_data.json", "w", encoding="utf-8") as f:
-                    json.dump(initial_data, f, indent=2)
-                print("...Successfully saved debug_initial_data.json")
-            except Exception as dump_error:
-                print(f"Error saving debug file: {dump_error}")
             return None # Initial structure invalid
 
     except json.JSONDecodeError as e:

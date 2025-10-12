@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from typing import Optional, List, Dict, Any
 import logging
+import asyncio
 
 # Import the scraper function (adjust path if necessary)
 try:
@@ -33,17 +34,23 @@ async def run_scrape(
     """
     logging.info(f"Received scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}")
     try:
-        # Run the potentially long-running scraping task
+        # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)
         # to avoid blocking the API server for long durations.
-        results = await scrape_google_maps( # Added await
-            query=query,
-            max_places=max_places,
-            lang=lang,
-            headless=headless # Pass headless option from API
+        results = await asyncio.wait_for(
+            scrape_google_maps(
+                query=query,
+                max_places=max_places,
+                lang=lang,
+                headless=headless
+            ),
+            timeout=300  # 5 minutes timeout
         )
         logging.info(f"Scraping finished for query: '{query}'. Found {len(results)} results.")
         return results
+    except asyncio.TimeoutError:
+        logging.error(f"Scraping timeout for query '{query}' after 300 seconds")
+        raise HTTPException(status_code=504, detail="Scraping request timed out after 5 minutes")
     except ImportError as e:
          logging.error(f"ImportError during scraping for query '{query}': {e}")
          raise HTTPException(status_code=500, detail="Server configuration error: Scraper not available.")
@@ -64,17 +71,23 @@ async def run_scrape_get(
     """
     logging.info(f"Received GET scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}")
     try:
-        # Run the potentially long-running scraping task
+        # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)
         # to avoid blocking the API server for long durations.
-        results = await scrape_google_maps( # Added await
-            query=query,
-            max_places=max_places,
-            lang=lang,
-            headless=headless # Pass headless option from API
+        results = await asyncio.wait_for(
+            scrape_google_maps(
+                query=query,
+                max_places=max_places,
+                lang=lang,
+                headless=headless
+            ),
+            timeout=300  # 5 minutes timeout
         )
         logging.info(f"Scraping finished for query: '{query}'. Found {len(results)} results.")
         return results
+    except asyncio.TimeoutError:
+        logging.error(f"Scraping timeout for query '{query}' after 300 seconds")
+        raise HTTPException(status_code=504, detail="Scraping request timed out after 5 minutes")
     except ImportError as e:
          logging.error(f"ImportError during scraping for query '{query}': {e}")
          raise HTTPException(status_code=500, detail="Server configuration error: Scraper not available.")

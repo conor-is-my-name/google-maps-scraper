@@ -39,10 +39,18 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
     results = []
     place_links = set()
     scroll_attempts_no_new = 0
+    browser = None
 
     async with async_playwright() as p: # Changed to async
         try:
-            browser = await p.chromium.launch(headless=headless) # Added await
+            browser = await p.chromium.launch(
+                headless=headless,
+                args=[
+                    '--disable-dev-shm-usage',  # Use /tmp instead of /dev/shm for shared memory
+                    '--no-sandbox',  # Required for running in Docker
+                    '--disable-setuid-sandbox',
+                ]
+            ) # Added await
             context = await browser.new_context( # Added await
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 java_script_enabled=True,
@@ -97,8 +105,7 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
                     print("Detected single place page.")
                     place_links.add(page.url)
                 else:
-                    print(f"Error: Feed element '{feed_selector}' not found. Maybe no results? Taking screenshot.")
-                    await page.screenshot(path='feed_not_found_screenshot.png') # Added await
+                    print(f"Error: Feed element '{feed_selector}' not found. Maybe no results or page structure changed.")
                     await browser.close() # Added await
                     return [] # No results or page structure changed
 
@@ -187,7 +194,7 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
             traceback.print_exc() # Print detailed traceback for debugging
         finally:
             # Ensure browser is closed if an error occurred mid-process
-            if 'browser' in locals() and browser.is_connected(): # Check if browser exists and is connected
+            if browser and browser.is_connected(): # Check if browser exists and is connected
                 await browser.close() # Added await
 
     print(f"\nScraping finished. Found details for {len(results)} places.")
