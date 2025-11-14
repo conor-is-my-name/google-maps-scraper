@@ -1,33 +1,34 @@
 
-version: '3.8'
-
 services:
-  scraper-api:
-    build: . # Build the image from the Dockerfile in the current directory
-    container_name: gmaps_scraper_api_service # Optional: specify a container name
+  gmaps_scraper_api_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gmaps_scraper_api
     ports:
-      - "8001:8001" # Map host port 8001 to container port 8001
-    restart: unless-stopped # Restart policy
-    working_dir: /app # Set working directory
-    networks:
-      - shark
-    # Tmpfs mounts to keep temporary files in RAM
-    tmpfs:
-      - /tmp:size=512M
-      - /dev/shm:size=2G
-    # Optional: Add environment variables if needed for configuration
-    # environment:
-    #   - HEADLESS_MODE=true
-    cpu_shares: 512
-    cpuset: "0"
+      - "8001:8001"
+    shm_size: '2gb'
+    environment:
+      - DISPLAY=:99
+      - PYTHONUNBUFFERED=1
+      # PLAYWRIGHT_BROWSERS_PATH retiré - utilise le chemin par défaut
+    volumes:
+      # Optionnel : pour persister les screenshots de debug
+      - ./debug_screenshots:/tmp
+      - /dev/shm:/dev/shm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Ressources (ajuster selon tes besoins)
     deploy:
       resources:
         limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
           cpus: '1'
-          memory: 3G
-
-# Create the external network first with:
-# docker network create shark
-networks:
-  shark:
-    external: true
+          memory: 512M

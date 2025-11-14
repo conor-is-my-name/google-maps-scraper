@@ -1,42 +1,69 @@
-# Use an official Python runtime as a parent image
 FROM python:3.10-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
+# Variables d'environnement
 ENV PYTHONUNBUFFERED=1
+ENV DISPLAY=:99
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 
-# Set work directory
-WORKDIR /app
-
-# Install system dependencies required by Playwright's browsers
-# Using the combined command to install dependencies for all browsers
-# See: https://playwright.dev/docs/docker#install-system-dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # --- Playwright dependencies ---
-    libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    # --- Other useful packages ---
-    curl \
-    # --- Cleanup ---
-    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
+# Installation des dépendances système pour Playwright et Xvfb
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libwayland-client0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
+    libu2f-udev \
+    libvulkan1 \
+    xvfb \
+    x11vnc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container at /app
-COPY requirements.txt setup.py ./
+# Créer le répertoire de travail
+WORKDIR /app
 
-# Install Python dependencies
+# Copier les fichiers requirements
+COPY requirements.txt .
+
+# Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install -e . --no-deps
 
-# Install Playwright browsers
-# This command downloads the browser binaries into the image
-RUN playwright install --with-deps
+# Installer Chromium avec Playwright
+RUN playwright install chromium && \
+    playwright install chromium && \
+    ls -la /root/.cache/ms-playwright/
 
-# Copy the rest of the application code into the container at /app
+# Copier le code de l'application
 COPY . .
 
-# Expose the port the app runs on
+# Script de démarrage avec Xvfb
+RUN echo '#!/bin/bash\n\
+# Démarrer Xvfb en arrière-plan\n\
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
+# Attendre que Xvfb démarre\n\
+sleep 2\n\
+# Démarrer l application\n\
+exec uvicorn gmaps_scraper_server.main_api:app --host 0.0.0.0 --port 8001\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Exposer le port
 EXPOSE 8001
 
-# Define the command to run the application
-# Use 0.0.0.0 to make it accessible from outside the container
-CMD ["uvicorn", "gmaps_scraper_server.main_api:app", "--host", "0.0.0.0", "--port", "8001"]
+# Commande de démarrage
+CMD ["/app/start.sh"]

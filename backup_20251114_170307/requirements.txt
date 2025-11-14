@@ -1,0 +1,3 @@
+playwright
+fastapi
+uvicorn[standard]
