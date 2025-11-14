@@ -10,40 +10,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def extract_place_details(page, link, extract_full_details=False):
+async def extract_place_details(page, place_url, extract_full_details=False):
     """
-    Extrait les détails d'un lieu (à utiliser avec un worker)
+    Extrait les détails d'un lieu en naviguant vers son URL
     """
     try:
-        # Extraire URL
-        href = await link.get_attribute('href')
-        
-        # Nom depuis URL (fallback)
+        # Extraire nom depuis URL (fallback)
         name = "N/A"
-        if href and '/maps/place/' in href:
+        if place_url and '/maps/place/' in place_url:
             try:
-                name_part = href.split('/maps/place/')[1].split('/data=')[0]
+                name_part = place_url.split('/maps/place/')[1].split('/data=')[0]
                 name = urllib.parse.unquote_plus(name_part)
             except:
                 pass
         
         place_data = {
             'name': name,
-            'url': href,
+            'url': place_url,
         }
         
-        # Cliquer pour ouvrir le panneau détails
+        # Naviguer vers la page du lieu
         logger.info(f"Processing: {name}")
-        await link.click()
-        await asyncio.sleep(2)  # Attendre chargement panneau
+        await page.goto(place_url, wait_until='domcontentloaded', timeout=15000)
+        await asyncio.sleep(2.5)
         
         # RATING
         rating = "N/A"
         try:
             rating_selectors = [
-                'div[role="main"] span[role="img"][aria-label*="star"]',
-                'div[role="main"] span[aria-label*="Star"]',
-                'button[jsaction*="pane.rating"] span[role="img"]'
+                'div[role="main"] span[aria-label*="star"]',
+                'span[role="img"][aria-label*="star"]',
             ]
             for sel in rating_selectors:
                 rating_elem = await page.query_selector(sel)
@@ -55,37 +51,52 @@ async def extract_place_details(page, link, extract_full_details=False):
         except Exception as e:
             logger.debug(f"Rating extraction error: {e}")
         
-        # REVIEWS COUNT
+        # REVIEWS COUNT - Amélioration
         reviews_count = "0"
         try:
+            # Chercher le bouton avec le nombre d'avis
             reviews_selectors = [
-                'button[jsaction*="pane.rating"] span[aria-label*="review"]',
-                'button[aria-label*="review"]'
+                'button[aria-label*="review"]',
+                'div[role="main"] button[jsaction*="pane.rating"]',
             ]
             for sel in reviews_selectors:
                 reviews_elem = await page.query_selector(sel)
                 if reviews_elem:
+                    # Essayer d'abord aria-label
                     aria = await reviews_elem.get_attribute('aria-label')
                     if aria and 'review' in aria.lower():
                         parts = aria.split()
                         if parts:
                             reviews_count = ''.join(filter(str.isdigit, parts[0]))
-                        break
+                            if reviews_count:
+                                break
+                    
+                    # Sinon, essayer le texte intérieur
+                    text = await reviews_elem.inner_text()
+                    if text and 'review' in text.lower():
+                        parts = text.split()
+                        if parts:
+                            reviews_count = ''.join(filter(str.isdigit, parts[0]))
+                            if reviews_count:
+                                break
         except Exception as e:
             logger.debug(f"Reviews extraction error: {e}")
         
-        # CATEGORY
+        # CATEGORY - Amélioration
         category = "N/A"
         try:
+            # Chercher le bouton de catégorie juste après le rating
             category_selectors = [
                 'button[jsaction*="pane.rating.category"]',
-                'div[role="main"] button[class*="DkEaL"]'
+                'div[role="main"] button[class*="DkEaL"]',
+                # Nouveau : chercher dans les boutons près du rating
+                'div[role="main"] div[class*="F7nice"] button',
             ]
             for sel in category_selectors:
                 cat_elem = await page.query_selector(sel)
                 if cat_elem:
                     cat_text = await cat_elem.inner_text()
-                    if cat_text and cat_text.strip():
+                    if cat_text and cat_text.strip() and len(cat_text) < 50:
                         category = cat_text.strip()
                         break
         except Exception as e:
@@ -104,13 +115,14 @@ async def extract_place_details(page, link, extract_full_details=False):
             try:
                 phone_selectors = [
                     'button[data-item-id*="phone"]',
-                    'button[aria-label*="Phone"]'
+                    'button[aria-label*="Phone"]',
+                    'button[aria-label*="phone"]'
                 ]
                 for sel in phone_selectors:
                     phone_elem = await page.query_selector(sel)
                     if phone_elem:
                         phone_aria = await phone_elem.get_attribute('aria-label')
-                        if phone_aria:
+                        if phone_aria and ':' in phone_aria:
                             phone = phone_aria.split(':')[-1].strip()
                             break
             except Exception as e:
@@ -131,37 +143,54 @@ async def extract_place_details(page, link, extract_full_details=False):
                 address_elem = await page.query_selector('button[data-item-id="address"]')
                 if address_elem:
                     address_aria = await address_elem.get_attribute('aria-label')
-                    if address_aria:
-                        address = address_aria.split(':')[-1].strip()
+                    if address_aria and ':' in address_aria:
+                        address = address_aria.split(':', 1)[-1].strip()
             except Exception as e:
                 logger.debug(f"Address extraction error: {e}")
             
-            # Horaires
+            # Horaires - Amélioration
             hours = "N/A"
             try:
+                # Méthode 1: Chercher le bouton avec aria-label
                 hours_selectors = [
                     'button[data-item-id*="oh"]',
                     'button[aria-label*="Hide open hours"]',
                     'button[aria-label*="Show open hours"]',
-                    'div[aria-label*="Show open hours"]',
-                    'div[aria-label*="Hide open hours"]'
                 ]
+                
                 for sel in hours_selectors:
                     hours_elem = await page.query_selector(sel)
                     if hours_elem:
                         hours_aria = await hours_elem.get_attribute('aria-label')
-                        if hours_aria:
+                        if hours_aria and ('open' in hours_aria.lower() or 'close' in hours_aria.lower()):
                             hours = hours_aria
                             break
                 
-                # Fallback: chercher texte Open/Closed
+                # Méthode 2: Chercher dans les spans avec "Open" ou "Closed"
+                if hours == "N/A":
+                    # Chercher spécifiquement dans la section d'information
+                    info_divs = await page.query_selector_all('div[role="main"] div[class*="rogA2c"]')
+                    for div in info_divs:
+                        text = await div.inner_text()
+                        if text:
+                            text_lower = text.lower()
+                            # Vérifier que c'est bien des horaires (contient "open" ou "closed" ET "am" ou "pm")
+                            if (('open' in text_lower or 'closed' in text_lower) and 
+                                ('am' in text_lower or 'pm' in text_lower or ':' in text)):
+                                hours = text
+                                break
+                
+                # Méthode 3: Fallback général (plus large)
                 if hours == "N/A":
                     status_texts = await page.query_selector_all('div[role="main"] span')
                     for span in status_texts:
                         text = await span.inner_text()
-                        if text and ('open' in text.lower() or 'closed' in text.lower() or 'pm' in text.lower() or 'am' in text.lower()):
-                            hours = text
-                            break
+                        if text:
+                            text_lower = text.lower()
+                            if (('opens' in text_lower or 'closes' in text_lower or 'open ⋅' in text_lower) and
+                                (len(text) < 100)):  # Éviter les longs textes
+                                hours = text
+                                break
                             
             except Exception as e:
                 logger.debug(f"Hours extraction error: {e}")
@@ -173,43 +202,33 @@ async def extract_place_details(page, link, extract_full_details=False):
                 'hours': hours,
             })
         
-        logger.info(f"✓ Extracted: {name} (rating: {rating})")
+        logger.info(f"✓ Extracted: {name} (rating: {rating}, reviews: {reviews_count}, category: {category})")
         return place_data
         
     except Exception as e:
-        logger.error(f"Error extracting place: {e}")
+        logger.error(f"Error extracting place {name}: {e}")
         return None
 
 
-async def process_places_parallel(context, place_links, max_places, extract_details, max_workers=3):
+async def process_places_parallel(context, place_urls, max_places, extract_details, max_workers=3):
     """
-    Traite plusieurs lieux en parallèle avec plusieurs onglets
-    
-    Args:
-        context: Browser context
-        place_links: Liste des liens à traiter
-        max_places: Nombre max de lieux
-        extract_details: Mode détails
-        max_workers: Nombre de workers parallèles (3-5 recommandé)
+    Traite plusieurs lieux en parallèle
     """
     results = []
-    semaphore = asyncio.Semaphore(max_workers)  # Limite le nombre de workers simultanés
+    semaphore = asyncio.Semaphore(max_workers)
     
-    async def worker(link):
+    async def worker(place_url):
         async with semaphore:
-            # Créer un nouvel onglet pour ce worker
             page = await context.new_page()
             try:
-                result = await extract_place_details(page, link, extract_details)
+                result = await extract_place_details(page, place_url, extract_details)
                 return result
             finally:
                 await page.close()
     
-    # Lancer tous les workers en parallèle
-    tasks = [worker(link) for link in place_links[:max_places]]
+    tasks = [worker(url) for url in place_urls[:max_places]]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Filtrer les résultats valides
     valid_results = [r for r in results if r is not None and not isinstance(r, Exception)]
     
     return valid_results
@@ -218,13 +237,6 @@ async def process_places_parallel(context, place_links, max_places, extract_deta
 async def scrape_google_maps(query: str, max_places: int = 10, lang: str = "en", headless: bool = True, extract_details: bool = False):
     """
     Scrape Google Maps avec parallélisation
-    
-    Args:
-        query: Requête de recherche
-        max_places: Nombre maximum de résultats
-        lang: Code langue
-        headless: Mode headless
-        extract_details: Extraire tous les détails (téléphone, horaires, etc.)
     """
     results = []
     
@@ -314,17 +326,23 @@ async def scrape_google_maps(query: str, max_places: int = 10, lang: str = "en",
                 await asyncio.sleep(1.5)
                 scroll_attempts += 1
             
-            # Récupérer tous les liens
+            # Récupérer toutes les URLs
             place_links = await page.query_selector_all('a[href*="/maps/place/"]')
-            logger.info(f"Starting parallel extraction of {min(len(place_links), max_places)} places...")
+            place_urls = []
+            for link in place_links[:max_places]:
+                url = await link.get_attribute('href')
+                if url:
+                    place_urls.append(url)
+            
+            logger.info(f"Starting parallel extraction of {len(place_urls)} places...")
             
             # Traitement parallèle avec 3 workers
             results = await process_places_parallel(
                 context, 
-                place_links, 
+                place_urls, 
                 max_places, 
                 extract_details,
-                max_workers=3  # 3 onglets en parallèle
+                max_workers=3
             )
             
             await page.close()
@@ -344,19 +362,20 @@ async def main():
     """Test function"""
     import time
     
-    print("\n=== TEST PARALLÈLE (3 workers) ===")
+    print("\n=== TEST SCRAPER ===")
     start = time.time()
-    results = await scrape_google_maps("restaurant sannois", max_places=6, lang="en", extract_details=True)
+    results = await scrape_google_maps("hotel paris", max_places=3, lang="en", extract_details=True)
     elapsed = time.time() - start
     
     print(f"\n✓ Extracted {len(results)} places in {elapsed:.1f} seconds")
-    print(f"  Average: {elapsed/len(results):.1f}s per place")
     
-    for place in results[:3]:  # Afficher les 3 premiers
+    for place in results:
         print(f"\n{place['name']}")
-        print(f"  Rating: {place.get('rating', 'N/A')}")
+        print(f"  Rating: {place.get('rating', 'N/A')} ({place.get('reviews_count', '0')} reviews)")
         print(f"  Category: {place.get('category', 'N/A')}")
         print(f"  Phone: {place.get('phone', 'N/A')}")
+        print(f"  Address: {place.get('address', 'N/A')}")
+        print(f"  Hours: {place.get('hours', 'N/A')}")
 
 
 if __name__ == "__main__":
