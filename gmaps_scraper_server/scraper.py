@@ -62,32 +62,32 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
             if not page:
                 await browser.close() # Close browser before raising
                 raise Exception("Failed to create a new browser page (context.new_page() returned None).")
-            # Removed problematic: await page.set_default_timeout(DEFAULT_TIMEOUT)
-            # Removed associated debug prints
-
+            
             search_url = create_search_url(query, lang)
             print(f"Navigating to search URL: {search_url}")
             await page.goto(search_url, wait_until='domcontentloaded') # Added await
             await asyncio.sleep(2) # Changed to asyncio.sleep, added await
 
             # --- Handle potential consent forms ---
-            # This is a common pattern, might need adjustment based on specific consent popups
             try:
-                consent_button_xpath = "//button[.//span[contains(text(), 'Accept all') or contains(text(), 'Reject all')]]"
+                # Expanded consent xpath to include Spanish and generic terms, covering both button and input elements
+                consent_xpath = "//button[.//span[contains(text(), 'Accept all') or contains(text(), 'Reject all') or contains(text(), 'Aceptar todo') or contains(text(), 'Rechazar todo') or contains(text(), 'Accept')]] | //input[@type='submit' and (@value='Accept all' or @value='Reject all' or @value='Aceptar todo' or @value='Rechazar todo')]"
+                
                 # Wait briefly for the button to potentially appear
-                await page.wait_for_selector(consent_button_xpath, state='visible', timeout=5000) # Added await
-                # Click the "Accept all" or equivalent button if found
-                # Example: Prioritize "Accept all"
-                accept_button = await page.query_selector("//button[.//span[contains(text(), 'Accept all')]]") # Added await
+                await page.wait_for_selector(consent_xpath, state='visible', timeout=5000)
+                
+                # Prioritize "Accept all" / "Aceptar todo"
+                accept_button = await page.query_selector("//button[.//span[contains(text(), 'Accept all') or contains(text(), 'Aceptar todo')]] | //input[@type='submit' and (@value='Accept all' or @value='Aceptar todo')]")
                 if accept_button:
                     print("Accepting consent form...")
-                    await accept_button.click() # Added await
+                    await accept_button.click()
                 else:
-                    # Fallback to clicking the first consent button found (might be reject)
-                    print("Clicking first available consent button...")
-                    await page.locator(consent_button_xpath).first.click() # Added await
+                    # Fallback
+                    print("Clicking available consent button...")
+                    await page.locator(consent_xpath).first.click()
+                
                 # Wait for navigation/popup closure
-                await page.wait_for_load_state('networkidle', timeout=5000) # Added await
+                await page.wait_for_load_state('networkidle', timeout=5000)
             except PlaywrightTimeoutError:
                 print("No consent form detected or timed out waiting.")
             except Exception as e:
@@ -97,19 +97,45 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
             # --- Scrolling and Link Extraction ---
             print("Scrolling to load places...")
             feed_selector = '[role="feed"]'
+            found_feed = False
+
+            # Attempt to find feed with fallbacks
             try:
-                await page.wait_for_selector(feed_selector, state='visible', timeout=25000) # Added await
+                await page.wait_for_selector(feed_selector, state='visible', timeout=10000) # Reduced timeout for primary
+                found_feed = True
             except PlaywrightTimeoutError:
+                print(f"Primary feed selector '{feed_selector}' not found. Checking fallbacks/alternatives...")
+                # Fallback strategies could go here if we identify other containers
+                # For now, we'll proceed to check single page or error
+
+            if not found_feed:
                  # Check if it's a single result page (maps/place/)
                 if "/maps/place/" in page.url:
                     print("Detected single place page.")
                     place_links.add(page.url)
                 else:
-                    print(f"Error: Feed element '{feed_selector}' not found. Maybe no results or page structure changed.")
-                    await browser.close() # Added await
-                    return [] # No results or page structure changed
+                    # DEBUG: Save HTML to file to inspect structure
+                    print("Feed not found. Saving HTML to 'debug_page.html'...")
+                    with open("debug_page.html", "w", encoding="utf-8") as f:
+                        f.write(await page.content())
+                    
+                    print(f"Page Title: {await page.title()}")
+                    
+                    # Try to find any place links directly
+                    links = await page.locator('a[href*="/maps/place/"]').evaluate_all('elements => elements.map(a => a.href)')
+                    if links:
+                        print(f"Found {len(links)} place links directly without feed selector.")
+                        place_links.update(links)
+                        # We might not be able to scroll effectively without the feed container, 
+                        # but we can at least scrape what's visible.
+                        # Try to guess feed selector from the first link's parent
+                        # ... (omitted for now, just proceeding with what we have)
+                    else:
+                        print(f"Error: Feed element not found. Page content might be unexpected.")
+                        await browser.close() # Added await
+                        return [] # No results or page structure changed
 
-            if await page.locator(feed_selector).count() > 0: # Added await
+            if found_feed and await page.locator(feed_selector).count() > 0: # Added await
                 last_height = await page.evaluate(f'document.querySelector(\'{feed_selector}\').scrollHeight') # Added await
                 while True:
                     # Scroll down
@@ -132,7 +158,7 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
                     new_height = await page.evaluate(f'document.querySelector(\'{feed_selector}\').scrollHeight') # Added await
                     if new_height == last_height:
                         # Check for the "end of results" marker
-                        end_marker_xpath = "//span[contains(text(), \"You've reached the end of the list.\")]"
+                        end_marker_xpath = "//span[contains(text(), \"You've reached the end of the list.\") or contains(text(), \"Has llegado al final de la lista\")]"
                         if await page.locator(end_marker_xpath).count() > 0: # Added await
                             print("Reached the end of the results list.")
                             break
@@ -199,6 +225,3 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True): 
 
     print(f"\nScraping finished. Found details for {len(results)} places.")
     return results
-
-# --- Example Usage ---
-# (Example usage block removed as this script is now intended to be imported as a module)

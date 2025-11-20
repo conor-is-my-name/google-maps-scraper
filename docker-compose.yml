@@ -10,7 +10,9 @@ services:
     restart: unless-stopped # Restart policy
     working_dir: /app # Set working directory
     networks:
-      - shark
+      - caddy_default
+    volumes:
+      - .:/app
     # Tmpfs mounts to keep temporary files in RAM
     tmpfs:
       - /tmp:size=512M
@@ -27,7 +29,7 @@ services:
           memory: 3G
 
 # Create the external network first with:
-# docker network create shark
+# docker network create caddy_default
 networks:
-  shark:
+  caddy_default:
     external: true
