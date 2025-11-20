@@ -214,6 +214,20 @@ def get_thumbnail(data):
     # Tentative guess based on debug_inner_data structure (might be in a sublist like [14][0][0][6][0]?)
     return safe_get(data, 14, 0, 0, 6, 0) # Tentative guess
 
+def get_place_id_cid(data):
+    """Extracts the internal Google Place ID (CID) if available (e.g. ChIJ...)."""
+    # Based on inspection, it is at index 78 or nested deep
+    # Direct index 78 check:
+    return safe_get(data, 78)
+
+def get_reviews_url(data):
+    """Constructs the reviews URL using the internal Place ID (CID)."""
+    cid = get_place_id_cid(data)
+    if cid:
+        # Construct URL using the Place ID
+        return f"https://search.google.com/local/reviews?placeid={cid}"
+    return None
+
 # Add more extraction functions here as needed, using the indices
 # from omkarcloud/src/extract_data.py as a reference, BUT VERIFYING against debug_inner_data.json
 
@@ -243,6 +257,7 @@ def extract_place_data(html_content):
         "website": get_website(data_blob),
         "phone": get_phone_number(data_blob), # Needs index verification
         "thumbnail": get_thumbnail(data_blob), # Needs index verification
+        "reviews_url": get_reviews_url(data_blob),
         # Add other fields as needed
     }
 
