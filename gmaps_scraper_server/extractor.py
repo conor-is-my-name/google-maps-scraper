@@ -245,6 +245,10 @@ def extract_place_data(html_content):
         print("Failed to parse JSON data or find expected structure.")
         return None
 
+    # DEBUG: Dump data_blob to inspect structure
+    with open("debug_data_blob.json", "w", encoding="utf-8") as f:
+        json.dump(data_blob, f, indent=2)
+
     # Now extract individual fields using the helper functions
     place_details = {
         "name": get_main_name(data_blob),
