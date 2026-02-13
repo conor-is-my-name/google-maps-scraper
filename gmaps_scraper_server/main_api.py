@@ -27,12 +27,13 @@ async def run_scrape(
     query: str = Query(..., description="The search query for Google Maps (e.g., 'restaurants in New York')"),
     max_places: Optional[int] = Query(None, description="Maximum number of places to scrape. Scrapes all found if None."),
     lang: str = Query("en", description="Language code for Google Maps results (e.g., 'en', 'es')."),
-    headless: bool = Query(True, description="Run the browser in headless mode (no UI). Set to false for debugging locally.")
+    headless: bool = Query(True, description="Run the browser in headless mode (no UI). Set to false for debugging locally."),
+    concurrency: int = Query(5, description="Number of concurrent tabs for scraping details. Default is 5.")
 ):
     """
     Triggers the Google Maps scraping process for the given query.
     """
-    logging.info(f"Received scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}")
+    logging.info(f"Received scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}, concurrency: {concurrency}")
     try:
         # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)
@@ -42,7 +43,8 @@ async def run_scrape(
                 query=query,
                 max_places=max_places,
                 lang=lang,
-                headless=headless
+                headless=headless,
+                concurrency=concurrency
             ),
             timeout=300  # 5 minutes timeout
         )
@@ -64,12 +66,13 @@ async def run_scrape_get(
     query: str = Query(..., description="The search query for Google Maps (e.g., 'restaurants in New York')"),
     max_places: Optional[int] = Query(None, description="Maximum number of places to scrape. Scrapes all found if None."),
     lang: str = Query("en", description="Language code for Google Maps results (e.g., 'en', 'es')."),
-    headless: bool = Query(True, description="Run the browser in headless mode (no UI). Set to false for debugging locally.")
+    headless: bool = Query(True, description="Run the browser in headless mode (no UI). Set to false for debugging locally."),
+    concurrency: int = Query(5, description="Number of concurrent tabs for scraping details. Default is 5.")
 ):
     """
     Triggers the Google Maps scraping process for the given query via GET request.
     """
-    logging.info(f"Received GET scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}")
+    logging.info(f"Received GET scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}, concurrency: {concurrency}")
     try:
         # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)
@@ -79,7 +82,8 @@ async def run_scrape_get(
                 query=query,
                 max_places=max_places,
                 lang=lang,
-                headless=headless
+                headless=headless,
+                concurrency=concurrency
             ),
             timeout=300  # 5 minutes timeout
         )

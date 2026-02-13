@@ -20,8 +20,9 @@ https://github.com/conor-is-my-name/n8n-autoscaling
 **Parameters:**
 - `query` (required): Search query (e.g., "hotels in 98392")
 - `max_places` (optional): Maximum number of results to return
-- `lang` (optional, default "en"): Language code for results
+- `lang` (optional, default "en"): Language code for results (supports en, es, fr, de, pt, and more)
 - `headless` (optional, default true): Run browser in headless mode
+- `concurrency` (optional, default 5): Number of concurrent tabs for scraping details (1-20)
 
 ### GET `/scrape-get`
 Alternative GET endpoint with same functionality
@@ -79,7 +80,62 @@ or for docker:
 
 `http://gmaps_scraper_api_service:8001`
 
+## Response Format
+
+Each place in the results includes:
+
+```json
+{
+  "name": "Starbucks",
+  "place_id": "ChIJ...",
+  "coordinates": {
+    "latitude": 47.6062,
+    "longitude": -122.3321
+  },
+  "address": "1912 Pike Pl, Seattle, WA 98101",
+  "rating": 4.3,
+  "reviews_count": 1234,
+  "reviews_url": "https://search.google.com/local/reviews?placeid=...",
+  "categories": ["Coffee shop", "Cafe"],
+  "website": "https://www.starbucks.com",
+  "phone": "2066241965",
+  "thumbnail": "https://...",
+  "link": "https://www.google.com/maps/place/..."
+}
+```
+
+## Features
+
+- ⚡ **Parallel processing**: Scrapes multiple places concurrently (configurable with `concurrency` parameter)
+- 🌍 **Multi-language support**: Works with en, es, fr, de, pt, and more
+- 🔗 **Direct reviews link**: Each result includes a direct link to the reviews page
+- 🛡️ **Anti-detection**: Random delays and user agent rotation to avoid rate limiting
+- 🔄 **Robust error handling**: Multiple fallback strategies for consent forms and feed detection
+
+## Troubleshooting
+
+### "Feed element not found" error
+- This usually means Google Maps changed its DOM structure or no results were found
+- The scraper now has multiple fallback strategies to handle this
+- Try with a different query or language parameter
+
+### Empty results
+- Check that your query returns results on Google Maps directly
+- Try with `headless=false` to see what the browser is doing
+- Check Docker logs: `docker logs gmaps_scraper_api_service`
+
+### Slow performance
+- Adjust the `concurrency` parameter (higher = faster but more detection risk)
+- Default is 5 concurrent tabs, max recommended is 10
+- Random delays are added for anti-detection (1-2 seconds per scroll)
+
+### Language-specific issues
+- Consent forms are now supported in: en, es, fr, de, pt, and more
+- Use the `lang` parameter to match your target region
+- Example: `lang=es` for Spanish results
+
 ## Notes
 - For production use, consider adding authentication
 - The scraping process may take several seconds to minutes depending on the number of results
-- Results format depends on the underlying scraper implementation
+- Recommended rate limiting: Max 500 places/day per IP, min 60s between API calls
+- Use the `concurrency` parameter to tune performance vs. detection risk (default: 5)

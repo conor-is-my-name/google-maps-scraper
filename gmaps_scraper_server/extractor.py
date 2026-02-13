@@ -1,5 +1,9 @@
 import json
 import re
+import logging
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 def safe_get(data, *keys):
     """
@@ -13,19 +17,19 @@ def safe_get(data, *keys):
                 if isinstance(key, int) and 0 <= key < len(current):
                     current = current[key]
                 else:
-                    # print(f"Index {key} out of bounds or invalid for list.")
+                    # logger.debug(f"Index {key} out of bounds or invalid for list.")
                     return None
             elif isinstance(current, dict):
                 if key in current:
                     current = current[key]
                 else:
-                    # print(f"Key {key} not found in dict.")
+                    # logger.debug(f"Key {key} not found in dict.")
                     return None
             else:
-                # print(f"Cannot access key {key} on non-dict/list item: {type(current)}")
+                # logger.debug(f"Cannot access key {key} on non-dict/list item: {type(current)}")
                 return None
         except (IndexError, TypeError, KeyError) as e:
-            # print(f"Error accessing key {key}: {e}")
+            # logger.debug(f"Error accessing key {key}: {e}")
             return None
     return current
 
@@ -40,13 +44,13 @@ def extract_initial_json(html_content):
             if json_str.strip().startswith(('[', '{')):
                 return json_str
             else:
-                print("Extracted content doesn't look like valid JSON start.")
+                logger.warning("Extracted content doesn't look like valid JSON start.")
                 return None
         else:
-            print("APP_INITIALIZATION_STATE pattern not found.")
+            logger.warning("APP_INITIALIZATION_STATE pattern not found.")
             return None
     except Exception as e:
-        print(f"Error extracting JSON string: {e}")
+        logger.error(f"Error extracting JSON string: {e}")
         return None
 
 def parse_json_data(json_str):
@@ -65,12 +69,12 @@ def parse_json_data(json_str):
 
              # Case 1: It's already the list we expect (older format?)
              if isinstance(data_blob_or_str, list):
-                 print("Found expected list structure directly at initial_data[3][6].")
+                 logger.debug("Found expected list structure directly at initial_data[3][6].")
                  return data_blob_or_str
 
              # Case 2: It's the string containing the actual JSON
              elif isinstance(data_blob_or_str, str) and data_blob_or_str.startswith(")]}'\n"):
-                 print("Found string at initial_data[3][6], attempting to parse inner JSON.")
+                 logger.debug("Found string at initial_data[3][6], attempting to parse inner JSON.")
                  try:
                      json_str_inner = data_blob_or_str.split(")]}'\n", 1)[1]
                      actual_data = json.loads(json_str_inner)
@@ -79,37 +83,37 @@ def parse_json_data(json_str):
                      if isinstance(actual_data, list) and len(actual_data) > 6:
                           potential_data_blob = safe_get(actual_data, 6)
                           if isinstance(potential_data_blob, list):
-                              print("Returning data blob found at actual_data[6].")
+                              logger.debug("Returning data blob found at actual_data[6].")
                               return potential_data_blob # This is the main data structure
                           else:
-                              print(f"Data at actual_data[6] is not a list, but {type(potential_data_blob)}.")
+                              logger.warning(f"Data at actual_data[6] is not a list, but {type(potential_data_blob)}.")
                               return None # Structure mismatch within inner data
                      else:
-                         print(f"Parsed inner JSON is not a list or too short (len <= 6), type: {type(actual_data)}.")
+                         logger.warning(f"Parsed inner JSON is not a list or too short (len <= 6), type: {type(actual_data)}.")
                          return None # Inner JSON structure not as expected
 
                  except json.JSONDecodeError as e_inner:
-                     print(f"Error decoding inner JSON string: {e_inner}")
+                     logger.error(f"Error decoding inner JSON string: {e_inner}")
                      return None
                  except Exception as e_inner_general:
-                     print(f"Unexpected error processing inner JSON string: {e_inner_general}")
+                     logger.error(f"Unexpected error processing inner JSON string: {e_inner_general}")
                      return None
 
              # Case 3: Data at [3][6] is neither a list nor the expected string
              else:
-                 print(f"Parsed JSON structure unexpected at [3][6]. Expected list or prefixed JSON string, got {type(data_blob_or_str)}.")
+                 logger.warning(f"Parsed JSON structure unexpected at [3][6]. Expected list or prefixed JSON string, got {type(data_blob_or_str)}.")
                  return None # Unexpected structure at [3][6]
 
         # Case 4: Initial path [3][6] itself wasn't valid
         else:
-            print(f"Initial JSON structure not as expected (list[3][6] path not valid). Type: {type(initial_data)}")
+            logger.warning(f"Initial JSON structure not as expected (list[3][6] path not valid). Type: {type(initial_data)}")
             return None # Initial structure invalid
 
     except json.JSONDecodeError as e:
-        print(f"Error decoding initial JSON: {e}")
+        logger.error(f"Error decoding initial JSON: {e}")
         return None
     except Exception as e:
-        print(f"Unexpected error parsing JSON data: {e}")
+        logger.error(f"Unexpected error parsing JSON data: {e}")
         return None
 
 
@@ -124,6 +128,21 @@ def get_main_name(data):
 def get_place_id(data):
     """Extracts the Google Place ID."""
     return safe_get(data, 10) # Updated index
+
+def get_place_id_cid(data):
+    """Extracts the internal Google Place ID (CID) for reviews URL (from PR #8)."""
+    # CID is typically found at index 78
+    return safe_get(data, 78)
+
+def get_reviews_url(data):
+    """
+    Constructs the reviews URL using the internal Place ID (CID) (from PR #8).
+    Format: https://search.google.com/local/reviews?placeid={cid}
+    """
+    cid = get_place_id_cid(data)
+    if cid:
+        return f"https://search.google.com/local/reviews?placeid={cid}"
+    return None
 
 def get_gps_coordinates(data):
     """Extracts latitude and longitude."""
@@ -168,7 +187,7 @@ def _find_phone_recursively(data_structure):
             phone_number_str = data_structure[1]
             standardized_number = re.sub(r'\D', '', phone_number_str)
             if standardized_number:
-                # print(f"Debug: Found phone via recursive search: {standardized_number}")
+                # logger.debug(f"Debug: Found phone via recursive search: {standardized_number}")
                 return standardized_number
 
         # If not the target list, recurse into list elements
@@ -197,7 +216,7 @@ def get_phone_number(data_blob):
     if found_phone:
         return found_phone
     else:
-        # print("Debug: Phone number pattern not found in data_blob.")
+        # logger.debug("Debug: Phone number pattern not found in data_blob.")
         return None
 
 def get_categories(data):
@@ -223,12 +242,12 @@ def extract_place_data(html_content):
     """
     json_str = extract_initial_json(html_content)
     if not json_str:
-        print("Failed to extract JSON string from HTML.")
+        logger.warning("Failed to extract JSON string from HTML.")
         return None
 
     data_blob = parse_json_data(json_str)
     if not data_blob:
-        print("Failed to parse JSON data or find expected structure.")
+        logger.warning("Failed to parse JSON data or find expected structure.")
         return None
 
     # Now extract individual fields using the helper functions
@@ -239,6 +258,7 @@ def extract_place_data(html_content):
         "address": get_complete_address(data_blob),
         "rating": get_rating(data_blob),
         "reviews_count": get_reviews_count(data_blob),
+        "reviews_url": get_reviews_url(data_blob),  # NEW from PR #8
         "categories": get_categories(data_blob),
         "website": get_website(data_blob),
         "phone": get_phone_number(data_blob), # Needs index verification
@@ -253,6 +273,9 @@ def extract_place_data(html_content):
 
 # Example usage (for testing):
 if __name__ == '__main__':
+    # Configure basic logging for standalone execution
+    logging.basicConfig(level=logging.INFO)
+
     # Load sample HTML content from a file (replace 'sample_place.html' with your file)
     try:
         with open('sample_place.html', 'r', encoding='utf-8') as f:
@@ -264,9 +287,9 @@ if __name__ == '__main__':
             print("Extracted Place Data:")
             print(json.dumps(extracted_info, indent=2))
         else:
-            print("Could not extract data from the sample HTML.")
+            logger.warning("Could not extract data from the sample HTML.")
 
     except FileNotFoundError:
-        print("Sample HTML file 'sample_place.html' not found. Cannot run example.")
+        logger.warning("Sample HTML file 'sample_place.html' not found. Cannot run example.")
     except Exception as e:
-        print(f"An error occurred during example execution: {e}")
+        logger.error(f"An error occurred during example execution: {e}")
