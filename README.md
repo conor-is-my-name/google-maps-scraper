@@ -17,41 +17,80 @@ https://github.com/conor-is-my-name/n8n-autoscaling
 
 ## API Endpoints
 
-**Parameters:**
-- `query` (required): Search query (e.g., "hotels in 98392")
-- `max_places` (optional): Maximum number of results to return
-- `lang` (optional, default "en"): Language code for results (supports en, es, fr, de, pt, and more)
-- `headless` (optional, default true): Run browser in headless mode
-- `concurrency` (optional, default 5): Number of concurrent tabs for scraping details (1-20)
+### POST `/scrape`
+Main endpoint for scraping Google Maps data (accepts JSON body)
 
 ### GET `/scrape-get`
-Alternative GET endpoint with same functionality
+Alternative GET endpoint with query parameters (recommended for n8n and webhooks)
 
 ### GET `/`
 Health check endpoint
 
+## API Parameters
+
+All endpoints support the same parameters:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | **Yes** | - | Search query (e.g., "hotels in 98392", "restaurants near Times Square") |
+| `max_places` | integer | No | `null` | Maximum number of results to return. If not set, returns all found results |
+| `lang` | string | No | `"en"` | Language code for results. Supports: `en`, `es`, `fr`, `de`, `pt`, and more |
+| `headless` | boolean | No | `true` | Run browser in headless mode. Set to `false` for debugging |
+| `concurrency` | integer | No | `5` | Number of concurrent browser tabs for scraping (range: 1-20). Higher = faster but more detection risk |
+
+### Parameter Notes
+- **query**: URL encode special characters when using GET endpoint
+- **max_places**: Useful for limiting API costs and response time. Without this, the scraper will continue until all results are found or the end of the list is reached
+- **lang**: Affects both the language of results and consent form detection
+- **headless**: Set to `false` only for local debugging (not recommended in Docker)
+- **concurrency**: Default of 5 is balanced. Increase for speed (max 10 recommended) or decrease to 1-2 if experiencing rate limiting
+
 ## Example Requests
 
-### GET Example
+### POST Example
 ```bash
-curl -X GET "http://localhost:8001/scrape" \
+curl -X POST "http://localhost:8001/scrape" \
 -H "Content-Type: application/json" \
 -d '{
   "query": "hotels in 98392",
   "max_places": 10,
   "lang": "en",
-  "headless": true
+  "headless": true,
+  "concurrency": 5
 }'
 ```
 
-### GET Example
+### GET Example (URL encoded)
 ```bash
-curl "http://localhost:8001/scrape-get?query=hotels%20in%2098392&max_places=10&lang=en&headless=true"
+curl "http://localhost:8001/scrape-get?query=hotels%20in%2098392&max_places=10&lang=en&headless=true&concurrency=5"
 ```
-or
 
+### Using with Docker service name
 ```bash
-curl "http://gmaps_scraper_api_service:8001/scrape-get?query=hotels%20in%2098392&max_places=10&lang=en&headless=true"
+curl "http://gmaps_scraper_api_service:8001/scrape-get?query=coffee%20shops%20in%20seattle&max_places=50&lang=en"
+```
+
+### Scraping all results (no limit)
+```bash
+curl "http://localhost:8001/scrape-get?query=restaurants%20in%20miami&lang=en"
+```
+
+### Spanish language results
+```bash
+curl "http://localhost:8001/scrape-get?query=restaurantes%20en%20barcelona&max_places=20&lang=es"
+```
+
+### High-speed scraping (increased concurrency)
+```bash
+curl -X POST "http://localhost:8001/scrape" \
+-H "Content-Type: application/json" \
+-d '{
+  "query": "gyms in los angeles",
+  "max_places": 100,
+  "lang": "en",
+  "headless": true,
+  "concurrency": 10
+}'
 ```
 
 
