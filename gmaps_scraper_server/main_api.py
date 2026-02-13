@@ -33,7 +33,8 @@ async def run_scrape(
     """
     Triggers the Google Maps scraping process for the given query.
     """
-    logging.info(f"Received scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}, concurrency: {concurrency}")
+    logging.info(f"Received scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, "
+                 f"headless: {headless}, concurrency: {concurrency}")
     try:
         # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)
@@ -72,7 +73,8 @@ async def run_scrape_get(
     """
     Triggers the Google Maps scraping process for the given query via GET request.
     """
-    logging.info(f"Received GET scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, headless: {headless}, concurrency: {concurrency}")
+    logging.info(f"Received GET scrape request for query: '{query}', max_places: {max_places}, lang: {lang}, "
+                 f"headless: {headless}, concurrency: {concurrency}")
     try:
         # Run the potentially long-running scraping task with timeout
         # Note: For production, consider running this in a background task queue (e.g., Celery)

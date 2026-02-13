@@ -12,8 +12,18 @@ If using n8n or other automation, use the /scrape-get endpoint for it to return 
 
 simple install, copy files and run docker compose up -d
 
-Intened to be used with this n8n build: 
-https://github.com/conor-is-my-name/n8n-autoscaling 
+Intened to be used with this n8n build:
+https://github.com/conor-is-my-name/n8n-autoscaling
+
+## Recent Updates
+
+### February 2026 - Stability Refactor ✨
+- **Major extractor refactoring** for long-term reliability
+  - Prioritizes semantic HTML attributes (aria-labels, data-item-id) over fragile CSS classes
+  - Significantly more resistant to Google Maps interface updates
+- **New field**: `hours` - Extracts business hours by day
+- **Improved category filtering** - Removes UI noise from categories
+- See [DATA_EXTRACTION_ANALYSIS.md](DATA_EXTRACTION_ANALYSIS.md) for technical details 
 
 ## API Endpoints
 
@@ -94,6 +104,7 @@ curl -X POST "http://localhost:8001/scrape" \
 ```
 
 
+
 ## Running the Service
 
 ### Docker
@@ -138,18 +149,38 @@ Each place in the results includes:
   "categories": ["Coffee shop", "Cafe"],
   "website": "https://www.starbucks.com",
   "phone": "2066241965",
+  "hours": ["Monday, 5 AM to 9 PM", "Tuesday, 5 AM to 9 PM"],
   "thumbnail": "https://...",
   "link": "https://www.google.com/maps/place/..."
 }
 ```
 
+### Field Notes
+
+- **`rating`**: Overall rating (1.0-5.0), extracted using stable accessibility attributes
+- **`reviews_count`**: Total number of reviews (numeric count)
+- **`hours`**: Business hours by day (e.g., "Monday, 5 AM to 9 PM") - extracted when available
+- **`reviews_url`**: ⚠️ **DEPRECATED** - This URL format no longer works and returns 404 errors as of 2026
+- **Individual review extraction**: ⚠️ **Not supported** - Google requires user authentication to view full review content. The scraper can extract overall ratings and review counts but cannot access individual review text/data
+
+### Extraction Stability (Updated Feb 2026)
+
+The scraper has been refactored to prioritize **stable, semantic selectors** over fragile CSS classes:
+
+- 🟢 **Highly Stable Fields**: Use accessibility attributes (`aria-label`, `data-item-id`) that are unlikely to break
+  - Address, phone, website, rating, hours, name, place_id
+- 🟡 **Moderately Stable**: Use common text patterns
+  - Reviews count, categories
+- See [DATA_EXTRACTION_ANALYSIS.md](DATA_EXTRACTION_ANALYSIS.md) for technical details
+
 ## Features
 
 - ⚡ **Parallel processing**: Scrapes multiple places concurrently (configurable with `concurrency` parameter)
+- 📊 **Comprehensive data**: Name, rating, review count, address, coordinates, phone, website, categories, hours, and more
 - 🌍 **Multi-language support**: Works with en, es, fr, de, pt, and more
-- 🔗 **Direct reviews link**: Each result includes a direct link to the reviews page
 - 🛡️ **Anti-detection**: Random delays and user agent rotation to avoid rate limiting
 - 🔄 **Robust error handling**: Multiple fallback strategies for consent forms and feed detection
+- 🎯 **Stability-first extraction**: Prioritizes semantic HTML attributes (aria-labels, data-item-id) over fragile CSS classes for long-term reliability
 
 ## Troubleshooting
 
@@ -178,3 +209,12 @@ Each place in the results includes:
 - The scraping process may take several seconds to minutes depending on the number of results
 - Recommended rate limiting: Max 500 places/day per IP, min 60s between API calls
 - Use the `concurrency` parameter to tune performance vs. detection risk (default: 5)
+
+## Known Limitations
+
+- **Review extraction not supported**: Google Maps requires user authentication (login) to view full review content. As of 2026, individual reviews cannot be scraped without violating Google's Terms of Service. The scraper can still extract:
+  - Overall rating (e.g., 4.3 stars)
+  - Total review count (e.g., 1,234 reviews)
+  - Place metadata (name, address, phone, website, etc.)
+- **Reviews URL deprecated**: The `reviews_url` field returns a URL that no longer works (404 error) as of 2026
+- For alternatives, consider using Google's official Places API for review access (requires API key and has usage costs)

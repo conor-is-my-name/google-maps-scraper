@@ -3,6 +3,7 @@ import asyncio
 import re
 import random
 import logging
+import os
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from urllib.parse import urlencode
 
@@ -41,15 +42,23 @@ async def scrape_place_details(context, link, semaphore):
     """
     Scrapes details for a single place using a new page from the browser context.
     Uses a semaphore to limit concurrency.
+
+    Args:
+        context: Playwright browser context
+        link (str): URL to the place page
+        semaphore: asyncio.Semaphore for concurrency control
+
+    Returns:
+        dict: Place data dictionary
     """
     async with semaphore:
         page = await context.new_page()
         try:
             logger.info(f"Processing link: {link}")
             await page.goto(link, wait_until='domcontentloaded')
-            
-            # Wait a bit for dynamic content if needed
-            # await page.wait_for_load_state('networkidle', timeout=10000)
+
+            # Wait for dynamic content to load (rating, reviews, etc.)
+            await asyncio.sleep(random_delay(2.0, 3.0))
 
             html_content = await page.content()
             place_data = extractor.extract_place_data(html_content)
@@ -111,16 +120,56 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True, c
                 locale=lang,
             )
             
-            # --- Step 1: Search and Scroll to collect links ---
+            # --- Step 1: Navigate to Google Maps and perform search ---
             page = await context.new_page()
             if not page:
                 await browser.close()
                 raise Exception("Failed to create a new browser page (context.new_page() returned None).")
 
-            search_url = create_search_url(query, lang)
-            logger.info(f"Navigating to search URL: {search_url}")
-            await page.goto(search_url, wait_until='domcontentloaded')
-            await asyncio.sleep(2)
+            # Navigate to Google Maps homepage first (more natural, avoids sidebar issues)
+            logger.info("Navigating to Google Maps homepage...")
+            await page.goto('https://www.google.com/maps', wait_until='domcontentloaded')
+            await asyncio.sleep(random_delay(3.0, 5.0))  # Give page time to fully load
+
+            # Find and use the search box
+            logger.info(f"Typing search query: {query}")
+            try:
+                # Try multiple search box selectors (Google Maps changes frequently)
+                search_box_selectors = [
+                    'input[id="searchboxinput"]',
+                    'input[aria-label*="Search"]',
+                    'input[placeholder*="Search"]',
+                    'input[name="q"]',
+                ]
+
+                search_box = None
+                for selector in search_box_selectors:
+                    try:
+                        await page.wait_for_selector(selector, state='visible', timeout=5000)
+                        search_box = selector
+                        logger.debug(f"Found search box with selector: {selector}")
+                        break
+                    except:
+                        continue
+
+                if not search_box:
+                    logger.error("Could not find search box on Google Maps")
+                    await browser.close()
+                    return []
+
+                # Type the query into the search box
+                await page.fill(search_box, query)
+                await asyncio.sleep(random_delay(0.5, 1.0))
+
+                # Press Enter to submit search
+                await page.keyboard.press('Enter')
+                logger.info("Search submitted, waiting for results...")
+                await asyncio.sleep(random_delay(3.0, 4.0))
+
+            except Exception as e:
+                logger.error(f"Error performing search: {e}")
+                await browser.close()
+                return []
 
             # --- Handle potential consent forms ---
             try:
@@ -224,9 +273,10 @@ async def scrape_google_maps(query, max_places=None, lang="en", headless=True, c
 
             # --- Step 2: Scraping Individual Places in Parallel ---
             logger.info(f"Scraping details for {len(place_links)} places with concurrency {concurrency}...")
-            
+
             semaphore = asyncio.Semaphore(concurrency)
-            tasks = [scrape_place_details(context, link, semaphore) for link in place_links]
+            tasks = [scrape_place_details(context, link, semaphore)
+                     for link in place_links]
             
             # Run tasks and gather results
             scraped_results = await asyncio.gather(*tasks)
